@@ -23,7 +23,8 @@ Each route group has its own instance of the shared token check, so an agent's t
 
 **Rules:**
 - **Managers** approve Tier B up to +4% and Tier C up to +8% in their region.
-- **The director** approves everything else, every Tier A change and every cut.
+- **The director** approves everything else: every Tier A change, every cut, and every fresh-produce increase (PP-04 §3.4: tomatoes, potatoes, onions and oranges, without the tier caps).
+- **Percents** are shown with two decimals, and rounding never lands on a limit (0, 3, 4, 8, 10%) that the exact value isn't on. Prices are stored in cents.
 - **Hard caps:** Tier A over +3% (PP-04 §3.1) and Tier B over +10% (PP-04 §3.2) can't be drafted.
 - **Rejecting** needs access to the region only.
 

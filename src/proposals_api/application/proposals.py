@@ -4,7 +4,7 @@ proposals. Who may do what comes from domain.rules, with the caller from the val
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 from typing import Protocol
 
 from margin_copilot_shared.contracts import DraftRequest, Proposal
@@ -22,9 +22,11 @@ from proposals_api.domain.rules import (
     authority,
     change_pct,
     check_decision,
+    is_fresh_produce,
     may_access,
     price_after,
     required_approver,
+    shown_pct,
 )
 
 MAX_LISTED = 100
@@ -73,11 +75,11 @@ async def draft(
     if current is None:
         raise NotFound("no current price")
     if request.new_price is not None:
-        new = request.new_price
+        new = request.new_price.quantize(CENT)  # "7.3" is stored and shown as 7.30
     else:
         new = price_after(current, request.change_pct)
     pct = change_pct(current, new)
-    approver, clause = required_approver(product.tier, pct)
+    approver, clause = required_approver(product.tier, pct, is_fresh_produce(product.name))
     proposal = Proposal(
         id=uuid.uuid4().hex,
         region=region,
@@ -86,7 +88,7 @@ async def draft(
         tier=product.tier,
         current_price=current,
         new_price=new,
-        change_pct=pct.quantize(CENT, rounding=ROUND_HALF_UP),
+        change_pct=shown_pct(pct),
         approver=approver,
         clause=clause,
         status="pending",

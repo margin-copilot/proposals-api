@@ -114,3 +114,21 @@ async def test_managers_list_only_their_region():
     assert await listing("pending", caller(G_SOUTH), GROUPS, store) == []
     everything = await listing("pending", caller(G_DIRECTORS), GROUPS, store)
     assert sorted(p.region for p in everything) == ["C", "N"]
+
+
+async def test_a_draft_stores_prices_in_cents():
+    proposal, _ = await make(DraftRequest(product="UHT milk 1 L", new_price=Decimal("7.3")))
+    assert proposal.model_dump(mode="json")["new_price"] == "7.30"
+
+
+async def test_a_fresh_produce_increase_goes_to_the_director():
+    tomatoes = Product("PRO-001", "Tomatoes 1 kg", "A")
+    prices = book([tomatoes], {("PRO-001", "N"): Decimal("7.00")})
+    proposal, _ = await make(
+        DraftRequest(product="Tomatoes 1 kg", change_pct=Decimal("5")), prices=prices
+    )
+    assert (proposal.approver, proposal.clause, proposal.change_pct) == (
+        "director",
+        "PP-04 §3.4",
+        Decimal("5.00"),
+    )

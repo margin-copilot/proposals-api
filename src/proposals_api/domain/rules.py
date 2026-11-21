@@ -9,6 +9,9 @@ from margin_copilot_shared.contracts import Proposal
 
 REGIONS = ("N", "C", "S")
 CENT = Decimal("0.01")
+# PP-04 §3.4: repriced weekly to follow market cost; §2.2 and §3.1–3.3 don't apply to them.
+FRESH_PRODUCE = ("tomatoes", "potatoes", "onions", "oranges")
+LIMITS = {Decimal(n) for n in (0, 3, 4, 8, 10)}  # where an approver or a cap changes (PP-04 §3)
 
 
 class ProposalProblem(Exception):
@@ -103,13 +106,30 @@ def price_after(current: Decimal, pct: Decimal) -> Decimal:
     return (current * (1 + pct / 100)).quantize(CENT, rounding=ROUND_HALF_UP)
 
 
-def required_approver(tier: str, pct: Decimal) -> tuple[str, str]:
+def shown_pct(pct: Decimal) -> Decimal:
+    """Two decimals for people. Rounding never lands on a limit the exact value isn't on, so the
+    figure can't contradict the approver (+4.004% shows +4.01%, +3.996% shows +3.99%)."""
+    shown = pct.quantize(CENT, rounding=ROUND_HALF_UP)
+    if shown != pct and abs(shown) in LIMITS:
+        shown += CENT if pct > shown else -CENT
+    return shown
+
+
+def is_fresh_produce(product_name: str) -> bool:
+    words = product_name.split()
+    return bool(words) and words[0].casefold() in FRESH_PRODUCE
+
+
+def required_approver(tier: str, pct: Decimal, fresh_produce: bool = False) -> tuple[str, str]:
     """(approver, clause). Stricter than PP-04 where its checks need data we don't read yet: every
-    cut needs the director (§3.5's margin floor), and fresh produce follows its tier (§3.4)."""
+    cut needs the director (§3.5's margin floor), and so does every fresh-produce increase (§3.4's
+    price index ≤ 105), without the tier caps §3.4 lifts."""
     if pct == 0:
         raise Invalid("That's no change from the current price.")
     if pct < 0:
         return "director", "PP-04 §3.5"
+    if fresh_produce:
+        return "director", "PP-04 §3.4"
     if tier == "A":
         if pct > 3:
             raise Invalid(_capped("PP-04 §3.1", "A", 3, pct), clause="PP-04 §3.1")
@@ -126,8 +146,7 @@ def required_approver(tier: str, pct: Decimal) -> tuple[str, str]:
 
 
 def _capped(clause: str, tier: str, cap: int, pct: Decimal) -> str:
-    # Two decimals, so a value just over the cap never reads as the cap itself.
-    return f"{clause} caps Tier {tier} increases at {cap}%; this would be {pct:+.2f}%."
+    return f"{clause} caps Tier {tier} increases at {cap}%; this would be {shown_pct(pct):+.2f}%."
 
 
 def check_decision(a: Authority, proposal: Proposal, approve: bool) -> None:
