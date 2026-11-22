@@ -39,7 +39,7 @@ Each route group has its own instance of the shared token check, so an agent's t
 
 ## Settings
 
-Names in [.env.example](.env.example); no defaults in azure mode. Proposals live in Table Storage (PartitionKey = region, RowKey = ID), written keylessly with the service's managed identity.
+Names in [.env.example](.env.example); no defaults in azure mode. `ALLOWED_ORIGINS` lists the exact browser origins (the web app) allowed to call the routes, comma-separated: CORS only, the token checks still decide. Proposals live in Table Storage (PartitionKey = region, RowKey = ID), written keylessly with the service's managed identity.
 
 ## Run and test
 

@@ -42,6 +42,7 @@ def create_app() -> Starlette:
             groups,
             entra_validator(tenant_id, client_id, draft_callers),
             entra_validator(tenant_id, client_id, review_callers),
+            allowed_origins=[o.strip() for o in env["ALLOWED_ORIGINS"].split(",") if o.strip()],
         )
     if adapters == "fake":
         # A fresh in-memory key per process: nobody outside this process can mint a token for it.
@@ -52,5 +53,6 @@ def create_app() -> Starlette:
             parse_region_groups(FAKE_GROUPS),
             issuer.validator(audience="proposals-api", allowed_callers=frozenset({"action-agent"})),
             issuer.validator(audience="proposals-api", allowed_callers=frozenset({"cli"})),
+            allowed_origins=["http://localhost:5173"],
         )
     raise ValueError(f"ADAPTERS must be azure or fake, not {adapters!r}")

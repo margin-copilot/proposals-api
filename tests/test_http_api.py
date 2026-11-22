@@ -130,3 +130,46 @@ async def test_bad_drafts_are_refused_without_details(client, issuer, body, stat
 async def test_an_unknown_status_is_400(client, issuer):
     response = await client.get("/proposals?status=all", headers=bearer(issuer, "cli", G_NORTH))
     assert response.status_code == 400
+
+
+WEB = "https://web.example"
+PREFLIGHT = {
+    "Access-Control-Request-Method": "POST",
+    "Access-Control-Request-Headers": "authorization",
+}
+
+
+def cors_client(issuer):
+    app = create_http_app(
+        FakePriceBook(PRODUCTS, PRICES),
+        MemoryProposalStore(),
+        GROUPS,
+        issuer.validator(audience=AUDIENCE, allowed_callers=frozenset({"action-agent"})),
+        issuer.validator(audience=AUDIENCE, allowed_callers=frozenset({"cli"})),
+        allowed_origins=[WEB],
+    )
+    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://p")
+
+
+async def test_a_preflight_to_a_decision_route_skips_the_token_check(issuer):
+    path = "/proposals/N/" + "a" * 32 + "/approve"
+    response = await cors_client(issuer).options(path, headers={"Origin": WEB, **PREFLIGHT})
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == WEB
+
+
+async def test_another_origin_gets_no_cors_headers(issuer):
+    response = await cors_client(issuer).options(
+        "/proposals", headers={"Origin": "https://evil.example", **PREFLIGHT}
+    )
+    assert response.status_code == 400
+    assert "access-control-allow-origin" not in response.headers
+
+
+async def test_a_cross_origin_decision_still_needs_a_review_token(issuer):
+    agent = bearer(issuer, "action-agent", G_DIRECTORS)
+    response = await cors_client(issuer).post(
+        "/proposals/N/" + "a" * 32 + "/approve", headers={**agent, "Origin": WEB}
+    )
+    assert (response.status_code, response.json()) == (403, {"error": "calling app not allowed"})
+    assert response.headers["access-control-allow-origin"] == WEB

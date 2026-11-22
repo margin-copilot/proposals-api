@@ -3,7 +3,7 @@ accept only the action agent's app; listing and decisions accept only apps peopl
 now, the web app in milestone 8). No agent can approve or reject."""
 
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from functools import partial
 
@@ -14,6 +14,7 @@ from margin_copilot_shared.security.tokens import TokenValidator
 from pydantic import ValidationError
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
+from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
@@ -40,6 +41,7 @@ def create_http_app(
     draft_validator: TokenValidator,
     review_validator: TokenValidator,
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+    allowed_origins: Sequence[str] = (),
 ) -> Starlette:
     async def create_draft(request: Request) -> JSONResponse:
         body = await request.body()
@@ -93,4 +95,17 @@ def create_http_app(
             ),
         ],
         exception_handlers={ProposalProblem: on_problem},
+        # App-wide and outside the per-route token checks, so the web app's preflights are
+        # answered first; CORS is a convenience, the token checks still decide (D-042).
+        middleware=[
+            Middleware(
+                CORSMiddleware,
+                allow_origins=list(allowed_origins),
+                allow_methods=["GET", "POST"],
+                allow_headers=["Authorization", "Content-Type"],
+                max_age=600,
+            )
+        ]
+        if allowed_origins
+        else [],
     )

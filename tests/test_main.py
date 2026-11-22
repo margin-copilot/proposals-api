@@ -25,6 +25,7 @@ AZURE = {
     "SQL_DATABASE": "riad",
     "TABLE_ENDPOINT": "https://stexample.table.core.windows.net",
     "TABLE_NAME": "proposals",
+    "ALLOWED_ORIGINS": "https://web.example",
 }
 
 
