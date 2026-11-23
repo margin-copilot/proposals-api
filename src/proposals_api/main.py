@@ -6,8 +6,10 @@ from azure.data.tables.aio import TableClient
 from azure.identity.aio import ManagedIdentityCredential
 from margin_copilot_shared.security.obo import OboClient, managed_identity_assertion
 from margin_copilot_shared.security.tokens import entra_validator
+from margin_copilot_shared.telemetry import configure_telemetry, instrument_app
 from margin_copilot_shared.testing.issuer import LocalIssuer
 from starlette.applications import Starlette
+from starlette.types import ASGIApp
 
 from proposals_api.adapters.inbound.http_api import create_http_app
 from proposals_api.adapters.outbound.azure_sql import AzureSqlPriceBook
@@ -21,7 +23,12 @@ FAKE_GROUPS = (
 )
 
 
-def create_app() -> Starlette:
+def create_app() -> ASGIApp:
+    configure_telemetry("proposals-api", os.environ)
+    return instrument_app(_app())
+
+
+def _app() -> Starlette:
     env = os.environ
     adapters = env["ADAPTERS"]
     if adapters == "azure":

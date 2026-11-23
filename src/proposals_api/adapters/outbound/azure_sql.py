@@ -12,6 +12,7 @@ from typing import Any
 
 from margin_copilot_shared.security.context import current_request
 from margin_copilot_shared.security.obo import OboClient
+from margin_copilot_shared.telemetry import span
 
 from proposals_api.application.proposals import Product
 
@@ -82,7 +83,10 @@ class AzureSqlPriceBook:
 
     async def _rows(self, sql: str, params: tuple) -> list[tuple]:
         token = current_request().token
-        return await asyncio.to_thread(self._query, token, sql, params)
+        with span("proposals_api.sql") as queried:
+            rows = await asyncio.to_thread(self._query, token, sql, params)
+            queried.set_attribute("margin.sql.rows", len(rows))
+            return rows
 
     def _query(self, user_token: str, sql: str, params: tuple) -> list[tuple]:
         connection = self._open(self._obo.exchange(user_token, SQL_SCOPES))
