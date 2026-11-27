@@ -63,3 +63,57 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+  deploy:
+    needs: image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    concurrency:
+      group: deploy
+      cancel-in-progress: false
+    defaults:
+      run:
+        shell: bash
+    env:
+      APP: ${{ secrets.CONTAINER_APP_NAME }}
+      RG: ${{ secrets.AZURE_RESOURCE_GROUP }}
+    steps:
+      - id: tag
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY}:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      - uses: azure/login@v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      # v2 has no v2.x.y tags; the commit is the v2 tag's
+      - uses: Azure/container-apps-deploy-action@8dff69dac3367c32ceb2690d8f13adbeab462703 # v2
+        with:
+          imageToDeploy: ${{ steps.tag.outputs.image }}
+          containerAppName: ${{ secrets.CONTAINER_APP_NAME }}
+          resourceGroup: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          disableTelemetry: true
+      - name: Wait until the new revision serves all traffic
+        env:
+          IMAGE: ${{ steps.tag.outputs.image }}
+        run: |
+          deadline=$((SECONDS + 300))
+          while :; do
+            rev=$(az containerapp show -n "$APP" -g "$RG" --query properties.latestRevisionName -o tsv)
+            # trafficWeight last: an empty value would shift the fields after it
+            read -r state image weight < <(az containerapp revision show -n "$APP" -g "$RG" --revision "$rev" \
+              --query "{s:properties.provisioningState, i:properties.template.containers[0].image, w:properties.trafficWeight}" -o tsv)
+            echo "$rev: $state, ${weight:-0}% of traffic"
+            if [ "$image" = "$IMAGE" ] && [ "$state" = Provisioned ] && [ "${weight:-0}" = 100 ]; then exit 0; fi
+            if [ "$state" = Failed ]; then echo "::error::revision $rev failed"; exit 1; fi
+            if [ "$SECONDS" -ge "$deadline" ]; then echo "::error::no new revision serving after 5 minutes"; exit 1; fi
+            sleep 10
+          done
+      - name: Smoke without a user token
+        run: |
+          fqdn=$(az containerapp show -n "$APP" -g "$RG" --query properties.configuration.ingress.fqdn -o tsv)
+          echo "::add-mask::$fqdn"
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 60 --retry 3 "https://$fqdn/proposals")
+          echo "GET /proposals without a token: $code"
+          test "$code" = 401
